@@ -1,0 +1,39 @@
+{
+    "orders": [
+        {
+            "item": "Apple MacBook Pro 13",
+            "quantity": 1,
+            "price": 161490.0,
+            "buyer": "Карасев Вадим",
+            "date": "23-10-2021"
+        },
+        {
+            "товар (item)": "Lenovo Book",
+            "количество (quantity)": 50,
+            "цена (price)": 23000,
+            "покупатель (buyer)": "Stanislav D.",
+            "дата (date)": "22.10.2020"
+        },
+        {
+            "товар (item)": "Lenovo Book",
+            "количество (quantity)": 15,
+            "цена (price)": 45000,
+            "покупатель (buyer)": "Doe John.",
+            "дата (date)": "26.12.2021"
+        },
+        {
+            "товар (item)": "Lenovo Book",
+            "количество (quantity)": 15,
+            "цена (price)": 45000,
+            "покупатель (buyer)": "Doe John.",
+            "дата (date)": "26.12.2021"
+        },
+        {
+            "товар (item)": "Lenovo Book",
+            "количество (quantity)": 15,
+            "цена (price)": 45000,
+            "покупатель (buyer)": "Doe John.",
+            "дата (date)": "26.12.2021"
+        }
+    ]
+}
