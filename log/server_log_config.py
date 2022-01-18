@@ -1,18 +1,28 @@
+import logging.handlers
 import logging
+import os
 
-LEVEL = logging.DEBUG
+from utils.variables import LOGGING_LEVEL
 
-SERVER_LOGGER = logging.getLogger('server')
+LOG = logging.getLogger('server')
 
-FILE_HANDLER = logging.FileHandler("server.log", encoding='utf-8')
-FILE_HANDLER.setLevel(LEVEL)
+LOG_PATH = os.path.dirname(os.path.abspath(__file__))
+LOG_PATH = os.path.join(LOG_PATH, 'logs/server_log_files/server.log')
 
-FORMATTER = logging.Formatter("%(asctime)s | %(levelname)-8s | %(module)-12s | %(message)s ")
-FILE_HANDLER.setFormatter(FORMATTER)
+FORMATTER = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
 
-SERVER_LOGGER.addHandler(FILE_HANDLER)
-SERVER_LOGGER.setLevel(LEVEL)
+LOG_FILE = logging.handlers.TimedRotatingFileHandler(LOG_PATH, encoding='utf8', interval=1, when='D')
+LOG_FILE.setFormatter(FORMATTER)
+
+LOG_FILE.setLevel(LOGGING_LEVEL)
+LOG.addHandler(LOG_FILE)
+LOG.setLevel(LOGGING_LEVEL)
 
 
 
-# SERVER_LOGGER.critical('critical')
+# отладка
+if __name__ == '__main__':
+    LOG.critical('ОТЛАДКА Критическая ошибка')
+    LOG.error('ОТЛАДКА Ошибка')
+    LOG.debug('ОТЛАДКА Отладочная информация')
+    LOG.info('ОТЛАДКА Информационное сообщение')

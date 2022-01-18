@@ -1,97 +1,62 @@
-from os import stat
-from socket import socket, AF_INET, SOCK_STREAM
-import sys
 import json
-import os
+import logging
+from socket import AF_INET, SOCK_STREAM, socket
+from lesson_06.utils.utils import create_parser
+from lesson_06.utils.variables import ENCODING, MAX_CONNECTIONS, MAX_PACKAGE_LENGTH
+from lesson_06.utils.decorators import log_de
 
-class Server():
+import lesson_06.log.server_log_config
 
-    def __init__(self, adres = '', port = 7777):
-        self.adres = adres
-        self.port = port
-        self.client = None
-        self.socket = self.inicializeSocket()
-        self.loop()
+RESPONSE_ERROR = 400
+RESPONSE_OK = 200
 
-
-    def inicializeSocket(self):
-        s = socket(AF_INET, SOCK_STREAM)
-        s.bind((self.adres, self.port))
-        s.listen()
-        return s
-
-    def createResponse(self, status):
-
-        if status == 200:
-            response = {"alert":"OK",
-                        }
-        if status == 500:
-            response = {
-                "alert": "Error",
-                "msg": "Msg doesnot added",
-                }
-
-        response["status"] = status
+SERVER_LOGGER = logging.getLogger('server')
 
 
-        response = json.dumps(response).encode("utf-8")
-        print(response)
-        return response
+class Server:
+    def __init__(self, logger):
+        self.logger = logger
+        self.transport = socket(AF_INET, SOCK_STREAM)
+        self.addr, self.port = create_parser()
+        self.logger.info(f'Сервер создан с параметрами {self.addr} {self.port}')
 
-    def pushUserMessage(self, DATA):
-        result = json.loads(DATA.decode(encoding="utf-8")) #Может быть ошибка
-        if os.path.isfile("msg.json"):
-            with open("msg.json", "r", encoding="utf-8") as f:
-                OBJ = json.load(f)
-                OBJ["messages"].append(result)
-        else:
-            OBJ = {"messages":[]}
+    @log_de
+    def create_connection(self):
+        try:
+            self.transport.bind((self.addr, self.port))
+            self.transport.listen(MAX_CONNECTIONS)
+        except Exception as e:
+            self.logger.critical(f'Сервер не подключен {e}')
 
-        with open("msg.json", "w", encoding="utf-8") as f:
-            json.dump(OBJ, f, indent=4)
-
-
-
-    def sendResponse(self, client, status=200):
-        self.client.send(self.createResponse(status)) #Может быть ошибка
-
-    def sendMessages(self):
-         with open("msg.json", "r", encoding="utf-8") as f:
-            OBJ = json.loads(f)
-
-
-    def loop(self):
         while True:
-            self.client, addr = self.socket.accept()
-            with open("serverlog.log", "a+", encoding="utf-8") as f:
-                f.write(f"Получен запрос на соединение от {str(addr)} \n" )
-
-            DATA = self.client.recv(4096)
+            client, client_address = self.transport.accept()
+            response = RESPONSE_ERROR
             try:
-                self.pushUserMessage(DATA)
-                self.sendResponse(self.client)
-            except json.JSONDecodeError:
-                self.sendResponse(self.client, status = 500)
+                data = client.recv(MAX_PACKAGE_LENGTH)
+                if data:
+                    json_answer = data.decode(ENCODING)
+                    response = self.process_client_message(json.loads(json_answer))
+            except:
+                self.logger.error(f'Принято некорректное сообщение от клиента')
+            finally:
+                self.logger.info(f'Отвечаем клиенту {response}')
+                print(f'Отвечаем клиенту', response)
+                client.send(f'{response}'.encode(ENCODING))
+                client.close()
 
-            self.client.close()
+    @log_de
+    def process_client_message(self, message):
+        self.logger.info(f'Обработка сообщения {message}')
+        print('process_client_message', message)
+        if message['action'] == 'presence' and message['user']['account_name'] == 'GUEST':
+            return RESPONSE_OK
+        return RESPONSE_ERROR
 
 
+def main():
+    server = Server(SERVER_LOGGER)
+    server.create_connection()
 
 
-
-
-
-
-if __name__ == "__main__":
-    try:
-        ip = sys.argv[1]
-    except IndexError:
-        ip = "localhost"
-    try:
-        port = int(sys.argv[2])
-    except IndexError:
-        port = 7777
-    try:
-        server = Server(ip, port)
-    except:
-        print("Error server creation")
+if __name__ == '__main__':
+    main()
