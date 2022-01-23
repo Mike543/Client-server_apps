@@ -1,102 +1,94 @@
-import json
-import logging
-import select
-from socket import AF_INET, SOCK_STREAM, socket
-from lesson_07.utils.utils import create_arguments_parser
-from lesson_07.utils.variables import ENCODING, MAX_CONNECTIONS, MAX_PACKAGE_LENGTH
-from lesson_07.utils.decorators import log_de
+#!/usr/bin/env python3
+import threading
+import socket
+import os
+from common import MAX_PACKAGE_LENGTH, parse_arguments, bytes_to_dict, SENDER, ALL_CLIENTS, \
+    DESTINATION, SERVER_ONLY
 
-import lesson_07.log.server_log_config
-
-RESPONSE_ERROR = 400
-RESPONSE_OK = 200
-
-SERVER_LOGGER = logging.getLogger('server')
+sender_connection = {}
 
 
-class Server:
-    def __init__(self, logger):
-        self.logger = logger
-        self.transport = socket(AF_INET, SOCK_STREAM)
-        # self.transport.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
-        self.addr, self.port, self.client_id = create_arguments_parser()
-        self.logger.info(f'Сервер создан с параметрами {self.addr} {self.port}')
-        print(f'Сервер создан с параметрами {self.addr} {self.port}')
-        self.clients = []
-        self.messages = []
+class Server(threading.Thread):
+    def __init__(self, host, port):
+        super().__init__()
+        self.connections = []
+        self.host = host
+        self.port = port
 
-    @log_de
-    def create_connection(self):
+    def run(self):
+        sock = None
         try:
-            self.transport.bind((self.addr, self.port))
-        except Exception as e:
-            self.logger.critical(f'Сервер не подключен {e}')
-            exit(1)
-        finally:
-            self.transport.listen(MAX_CONNECTIONS)
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind((self.host, self.port))
+            sock.listen(1)
+            print('Сервер подключен: {}'.format(sock.getsockname()))
+        except Exception as err:
+            print('Ошибка {}'.format(err))
+            os._exit(1)
 
-            while True:
-                try:
-                    client, client_address = self.transport.accept()
-                except OSError:
-                    pass
+        while True:
+            # получаем запрос на соединение
+            sc, name = sock.accept()
+            server_socket = ServerSocket(sc, name, self)
+            server_socket.start()
+            # и сохраняем в подключениях
+            self.connections.append(server_socket)
+
+    def send(self, message, source):
+        for connection in self.connections:
+            if connection.sockname != source:
+                # отправляем сообщение всем клиентам, кроме отправившего
+                msg = bytes_to_dict(message)
+                print('Разбираем сообщение для {}: {}'.format(connection.sockname, msg))
+
+                if msg[DESTINATION] == SERVER_ONLY:
+                    print('Регистрируем клиента {}'.format(msg[SENDER]))
+                    sender_connection[msg[SENDER]] = connection
+                elif msg[DESTINATION] == ALL_CLIENTS:
+                    print('Сообщение для всех')
+                    connection.send(message)
+                elif msg[DESTINATION] in sender_connection.keys():
+                    print('Приватное сообщение для {}'.format(msg[DESTINATION]))
+                    sender_connection[msg[DESTINATION]].send(message)
                 else:
-                    self.logger.info(f'Подключен клиент {client.fileno()} {client_address}')
-                    self.clients.append(client)
-                finally:
-                    self.process_queue()
-
-    def read_requests(self, pending):
-        responses = {}
-
-        for client in pending:
-            try:
-                data = client.recv(MAX_PACKAGE_LENGTH)
-                if data:
-                    message = json.loads(data.decode(ENCODING))
-                    print(f'message >>> ${message}')
-                responses[client] = data
-            except Exception as err:
-                print(f'read_requests >>> ${err}')
-                print('Клиент {} {} отключился'.format(client.fileno(), client.getpeername()))
-                self.clients.remove(client)
-
-        return responses
-
-    def write_responses(self, requests, pending):
-        for client in pending:
-            if client in requests:
-                try:
-                    response = requests[client]
-                    print('Отвечаем {} сообщением {}'.format(client.fileno(), response))
-                    client.send(response)
-                except Exception as err:
-                    print(f'write_responses >>> ${err}')
-                    print('Клиент {} {} отключился'.format(client.fileno(), client.getpeername()))
-                    client.close()
-                    self.clients.remove(client)
-
-    @log_de
-    def process_queue(self):
-        wait = 1
-        read_list = []
-        write_list = []
-        err_list = []
-        try:
-            if self.clients:
-                read_list, write_list, err_list = select.select(self.clients, self.clients, [], wait)
-        except OSError:
-            pass
-
-        requests = self.read_requests(read_list)
-        if requests:
-            self.write_responses(requests, write_list)
+                    print('Фигня какая-то')
 
 
-def main():
-    server = Server(SERVER_LOGGER)
-    server.create_connection()
+class ServerSocket(threading.Thread):
+    def __init__(self, transport, sockname, server):
+        super().__init__()
+        self.transport = transport
+        self.sockname = sockname
+        self.server = server
+
+    def run(self):
+        while True:
+            message = self.transport.recv(MAX_PACKAGE_LENGTH)
+            if message:
+                # при сообщении
+                self.server.send(message, self.sockname)
+            else:
+                # при отключении
+                self.transport.close()
+                server.connections.remove(self)
+                return
+
+    def send(self, message):
+        self.transport.sendall(message)
+
+
+def close(serv):
+    while True:
+        command = input('')
+        if command == 'q':
+            for connection in serv.connections:
+                connection.transport.close()
+            os._exit(0)
 
 
 if __name__ == '__main__':
-    main()
+    args = parse_arguments()
+    server = Server(args.a, args.p)
+    server.start()
+    threading.Thread(target=close, args=(server,)).start()
